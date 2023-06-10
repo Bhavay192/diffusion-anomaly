@@ -17,6 +17,9 @@ from guided_diffusion.script_util import (
     add_dict_to_argparser,
 )
 from guided_diffusion.train_util import TrainLoop
+import guided_diffusion.models as models_mdt
+from masked_diffusion import create_diffusion, model_and_diffusion_defaults, diffusion_defaults
+
 from visdom import Visdom
 viz = Visdom(port=8850)
 
@@ -27,9 +30,16 @@ def main():
     logger.configure()
 
     logger.log("creating model and diffusion...")
-    model, diffusion = create_model_and_diffusion(
-        **args_to_dict(args, model_and_diffusion_defaults().keys())
-    )
+    config = args_to_dict(args, model_and_diffusion_defaults.keys())
+    image_size = config['image_size']
+    latent_size = image_size // 8
+    
+    model = models_mdt.__dict__[args.model](input_size=latent_size, mask_ratio=args.mask_ratio, decode_layer=args.decode_layer)
+    diffusion = create_diffusion(**args_to_dict(args, diffusion_defaults().keys()))
+    
+    # model, diffusion = create_model_and_diffusion(
+    #     **args_to_dict(args, model_and_diffusion_defaults().keys())
+    # )
     model.to(dist_util.dev())
     schedule_sampler = create_named_schedule_sampler(args.schedule_sampler, diffusion,  maxt=1000)
 

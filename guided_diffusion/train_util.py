@@ -43,6 +43,7 @@ class TrainLoop:
         weight_decay=0.0,
         lr_anneal_steps=0,
         dataset='brats',
+        scale_factor=0.18215
     ):
         self.model = model
         self.diffusion = diffusion
@@ -65,6 +66,7 @@ class TrainLoop:
         self.schedule_sampler = schedule_sampler or UniformSampler(diffusion)
         self.weight_decay = weight_decay
         self.lr_anneal_steps = lr_anneal_steps
+        self.scale_factor = scale_factor
 
         self.step = 0
         self.resume_step = 0
@@ -113,6 +115,22 @@ class TrainLoop:
                 )
             self.use_ddp = False
             self.ddp_model = self.model
+        # self.instantiate_first_stage()
+
+    def instantiate_first_stage(self):
+        model = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(dist_util.dev())
+        self.first_stage_model = model.eval()
+        self.first_stage_model.train = False
+        for param in self.first_stage_model.parameters():
+            param.requires_grad = False
+
+    # https://github.com/huggingface/diffusers/blob/29b2c93c9005c87f8f04b1f0835babbcea736204/src/diffusers/models/autoencoder_kl.py
+    @th.no_grad()
+    def get_first_stage_encoding(self, x):
+            encoder_posterior = self.first_stage_model.encode(x, return_dict=True)[0]
+
+            z = encoder_posterior.sample()
+            return z.to(dist_util.dev()) * self.scale_factor
 
     def _load_and_sync_parameters(self):
         resume_checkpoint = find_resume_checkpoint() or self.resume_checkpoint
@@ -202,6 +220,7 @@ class TrainLoop:
         self.mp_trainer.zero_grad()
         for i in range(0, batch.shape[0], self.microbatch):
             micro = batch[i : i + self.microbatch].to(dist_util.dev())
+            micro = self.get_first_stage_encoding(micro).detach()
             print('micro', micro.shape)
             micro_cond = {
                 k: v[i : i + self.microbatch].to(dist_util.dev())
@@ -219,27 +238,42 @@ class TrainLoop:
                 model_kwargs=micro_cond,
             )
 
+            # micro_cond_mask = micro_cond.copy()
+            # micro_cond_mask['enable_mask']=True
+            # compute_losses_mask = functools.partial(
+            #     self.diffusion.training_losses,
+            #     self.ddp_model,
+            #     micro,
+            #     t,
+            #     model_kwargs=micro_cond_mask,
+            # )
+
             if last_batch or not self.use_ddp:
                 losses1 = compute_losses()
+                # losses_mask = compute_losses_mask()
 
             else:
                 with self.ddp_model.no_sync():
                     losses1 = compute_losses()
+                    # losses_mask = compute_losses_mask()
 
             if isinstance(self.schedule_sampler, LossAwareSampler):
                 self.schedule_sampler.update_with_local_losses(
-                    t, losses["loss"].detach()
+                    t, losses1["loss"].detach() #+ losses_mask["loss"].detach()
                 )
             losses = losses1[0]
             sample = losses1[1]
 
-            loss = (losses["loss"] * weights).mean()
+            loss = (losses["loss"] * weights).mean() #+ (losses_mask["loss"] * weights).mean()
 
-            lossmse = (losses["mse"] * weights).mean().detach()
+            lossmse = (losses["mse"] * weights).mean().detach() #+ (losses_mask["mse"] * weights).mean()
            
             log_loss_dict(
                 self.diffusion, t, {k: v * weights for k, v in losses.items()}
             )
+            # log_loss_dict(
+            #     self.diffusion, t, {'m_'+k: v * weights for k, v in losses_mask.items()}
+            # )
             self.mp_trainer.backward(loss)
 
             return lossmse.detach(),  sample
