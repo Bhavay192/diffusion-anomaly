@@ -19,6 +19,7 @@ def create_diffusion(
     predict_xstart=False,
     learn_sigma=True,
     rescale_learned_sigmas=False,
+    rescale_timesteps=False,
     diffusion_steps=1000
 ):
     betas = gd.get_named_beta_schedule(noise_schedule, diffusion_steps)
