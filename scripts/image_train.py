@@ -99,9 +99,21 @@ def create_argparser():
         use_fp16=False,
         fp16_scale_growth=1e-3,
         dataset='brats',
+        model="MDT_S_2",
+        mask_ratio=None,
+        decode_layer=None,
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()
+    parser.add_argument('--world_size', default=1, type=int,
+                        help='number of distributed processes')
+    parser.add_argument('--local_rank', default=-1, type=int)
+    parser.add_argument('--dist_on_itp', action='store_true')
+    parser.add_argument('--dist_url', default='env://',
+                        help='url used to set up distributed training')
+    parser.add_argument(
+        "--rank", default=0, type=int, help="""rank for distrbuted training."""
+    )
     add_dict_to_argparser(parser, defaults)
     return parser
 
