@@ -115,7 +115,7 @@ class TrainLoop:
                 )
             self.use_ddp = False
             self.ddp_model = self.model
-        # self.instantiate_first_stage()
+        self.instantiate_first_stage()
 
     def instantiate_first_stage(self):
         model = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(dist_util.dev())
