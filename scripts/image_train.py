@@ -18,7 +18,7 @@ from guided_diffusion.script_util import (
 )
 from guided_diffusion.train_util import TrainLoop
 import guided_diffusion.models as models_mdt
-from masked_diffusion import create_diffusion, model_and_diffusion_defaults, diffusion_defaults
+from guided_diffusion import create_diffusion, model_and_diffusion_defaults, diffusion_defaults
 
 from visdom import Visdom
 viz = Visdom(port=8850)
