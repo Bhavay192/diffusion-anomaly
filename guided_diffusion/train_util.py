@@ -12,6 +12,7 @@ from . import dist_util, logger
 from .fp16_util import MixedPrecisionTrainer
 from .nn import update_ema
 from .resample import LossAwareSampler, UniformSampler
+from diffusers.models import AutoencoderKL
 from visdom import Visdom
 viz = Visdom(port=8850)
 
